@@ -1,30 +1,29 @@
-//https://github.com/Pecacheu/chartjs-filter-plugin; MIT License
+//https://github.com/Pecacheu/chartjs-filter-plugin v1.1; MIT License
 
 (() => {
 
-function onInit(c) { //Setup data cache
-	// let d=c.data, od=d.rawData=d.datasets, nd=d.datasets=[];
-	// od.forEach(d => nd.push(utils.copy(d,1)));
-	c.data.datasets.forEach(s => {s.rawData=s.data});
-	let o=utils.setPropSafe(c,'options.plugins.filter',{},1);
-	o.extDiv=o.extDiv||4, o.delay=o.delay||1000;
-	o.debug=true; //TEMP
+function onInit(c) {
+	let o; try {o=c.options.plugins.filter} catch(_) {}
+	if(!o || !o.enabled) return;
+	o.extDiv||(o.extDiv=4), o.forceRedraw||(o.forceRedraw=25);
+	o._ifr=1/o.forceRedraw;
+	c.data.datasets.forEach(s => {s.rawData=s.data}); //Data cache
 }
 function onEnd(c) {
-	//console.log("Update End");
-	//c.dfRun=0;
-	if(c._dft) return;
-	c._dft = setTimeout(() => doUpdate(c), c.options.plugins.filter.delay);
+	let o=c.options.plugins.filter;
+	if(!o.enabled) c._x=0;
+	else if(c._x) { //Check for force-redraw
+		let xd=c._dr/(c._x.max-c._x.min);
+		if(xd>o.forceRedraw || xd<o._ifr) doUpdate(c);
+	} else if(c._x=c.getDatasetMeta(0).xScale) doUpdate(c); //Initial update
 }
+
 function doUpdate(c) {
-	c._dft=null; if(!c._x) c._x=c.getDatasetMeta(0).xScale;
 	let ds=c.data.datasets, s=c._x.min, e=c._x.max;
-	if(c._ds==s && c._de==e) return; c._ds=s,c._de=e;
+	if(c._ds==s && c._de==e) return; c._ds=s, c._de=e, c._dr=e-s;
 
-	console.log('Update...');
-
-	let j,dl,lb,ub, sx=c.options.plugins.filter.sameX,
-	d=(e-s)/c.options.plugins.filter.extDiv; s-=d, e+=d;
+	let j,dl,lb,ub, o=c.options.plugins.filter,
+		sx=o.sameX, d=c._dr/o.extDiv; s-=d,e+=d;
 
 	ds.forEach((n,i) => {
 		d=n.rawData; if(!i || !sx) {
@@ -34,17 +33,17 @@ function doUpdate(c) {
 		}
 		n.data=d.slice(lb,ub+1);
 	});
-	c._dfr=1;
+	c._dfr=1; //Set redraw flag
 
-	if(c.options.plugins.filter.debug) {
+	if(o.debug) {
 		dl=[]; ds.forEach(d => dl.push(d.data.length)); dl=dl.join(', ');
 		console.log(`SPLICE ${ds.length} scales to rng (${lb} -> ${ub}), len savings `+
 			`${ds[0].rawData.length} -> ${ds[0]._data?ds[0]._data.length:'NULL'} -> ${dl}`);
 	}
 }
-
 function doRedraw(c) {
-	if(c._dfr) /*console.log("Redraw"),*/c._dfr=0,c.update('none');
+	if(c._x && !c._dfr) doUpdate(c);
+	if(c._dfr) c._dfr=0,c.update('none');
 }
 
 Chart.register({id:'filter', install:onInit, afterDraw:onEnd, afterRender:doRedraw});
